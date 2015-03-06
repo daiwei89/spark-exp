@@ -6,10 +6,13 @@ import scopt.OptionParser
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
-import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating}
+//import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating}
 import org.apache.spark.rdd.RDD
+import org.apache.spark.ml.SimpleALS
+import org.apache.spark.ml.Transformer
+import org.apache.spark.ml.Rating
 
-object ALS extends App {
+object MatrixFactorization extends App {
 
   case class Params(
       input: String = null,
@@ -18,12 +21,13 @@ object ALS extends App {
       lambda: Double = 1.0,
       rank: Int = 10,
       numUserBlocks: Int = -1,
-      numProductBlocks: Int = -1) extends AbstractParams[Params]
+      numProductBlocks: Int = -1,
+      useSimpleALS: Boolean = false) extends AbstractParams[Params]
 
   val defaultParams = Params()
 
-  val parser = new OptionParser[Params]("ALS") {
-    head("MovieLensALS: an example app for ALS on MovieLens data.")
+  val parser = new OptionParser[Params]("MatrixFactorization") {
+    head("MatrixFactorization: an example app for MatrixFactorization.")
     opt[Int]("rank")
       .text(s"rank, default: ${defaultParams.rank}}")
       .action((x, c) => c.copy(rank = x))
@@ -43,6 +47,9 @@ object ALS extends App {
       .text(s"number of product blocks, " +
         s"default: ${defaultParams.numProductBlocks} (auto)")
       .action((x, c) => c.copy(numProductBlocks = x))
+    opt[Unit]("useSimpleALS")
+      .text("use simple ALS")
+      .action((_, c) => c.copy(useSimpleALS = true))
     arg[String]("<input>")
       .required()
       .text("input paths to a MovieLens dataset of ratings")
@@ -65,7 +72,7 @@ object ALS extends App {
   }
 
   def run(params: Params) {
-    val conf = new SparkConf().setAppName(s"ALS with $params")
+    val conf = new SparkConf().setAppName(s"MatrixFactorizationALS with $params")
     /*
     if (params.kryo) {
       conf.registerKryoClasses(Array(classOf[mutable.BitSet], classOf[Rating]))
@@ -79,7 +86,7 @@ object ALS extends App {
     val dataLoadingTimer = new Timer
     val data = sc.textFile(params.input)
     val training = data.map(_.split("\\s+") match { case Array(user, item, rate)
-      => Rating(user.toInt, item.toInt, rate.toDouble) }).cache()
+      => new Rating(user.toInt, item.toInt, rate.toFloat) }).cache()
 
     val numTraining = training.count()
     val numUsers = training.map(_.user).distinct().count()
@@ -91,28 +98,34 @@ object ALS extends App {
     println(s"Data loading time: $dataLoadingTime")
 
     val trainingTimer = new Timer
-    val model = new ALS()
-      .setRank(params.rank)
-      .setIterations(params.numIterations)
-      .setLambda(params.lambda)
-      .setUserBlocks(params.numUserBlocks)
-      .setProductBlocks(params.numProductBlocks)
-      .run(training)
+    val numBlocks = 10
+    val (userFactors, prodFactors) =
+      new SimpleALS().run(training
+      , params.rank
+      , numBlocks
+      , params.numIterations
+      , params.lambda
+      , false  // no implicit pref
+      , 1.0)    // ignored when no implicit pref
+    //new MatrixFactorizationModel(params.rank, userFactors, prodFactors)
     val trainingTime = trainingTimer.elapsed
     val numIterations = params.numIterations
     println(s"Training time: $trainingTime ($numIterations Iterations)")
 
+    /*
     val evalTimer = new Timer
     val (sqError, rmse) = computeErrors(model, training)
     val evalTime = trainingTimer.elapsed
     println(s"Eval time: $evalTime")
 
     println(s"Training SE = $sqError; RMSE = $rmse.")
+    */
 
     sc.stop()
   }
 
   /** Compute RMSE (Root Mean Squared Error). */
+  /*
   def computeErrors(model: MatrixFactorizationModel, data: RDD[Rating]) = {
     val predictions: RDD[Rating] = model.predict(data.map(x => (x.user, x.product)))
     val predictionsAndRatings = predictions.map{ x =>
@@ -122,4 +135,5 @@ object ALS extends App {
     val numData = data.count
     (mse * numData, math.sqrt(mse))
   }
+  */
 }

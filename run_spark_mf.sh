@@ -35,7 +35,7 @@ data_path=/l0/netflix/netflix.entrylist
 #data_path=/tank/projects/biglearning/wdai/petuum/exp_apps/new_mlr/datasets/kdda/kdda
 
 cmd="time $spark_dir/bin/spark-submit \
-    --class ALS \
+    --class MatrixFactorization \
     --master spark://${master_ip}:7077 \
     --driver-memory 100G \
     $script_dir/mf/target/mf-1.0.jar \
