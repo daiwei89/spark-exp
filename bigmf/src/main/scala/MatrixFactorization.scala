@@ -6,11 +6,10 @@ import scopt.OptionParser
 
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkContext._
-//import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating}
+import org.apache.spark.mllib.recommendation.{MatrixFactorizationModel, Rating}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.ml.SimpleALS
-import org.apache.spark.ml.Transformer
-import org.apache.spark.ml.Rating
+import org.apache.spark.ml.{Rating => R}
 
 object MatrixFactorization extends App {
 
@@ -86,7 +85,7 @@ object MatrixFactorization extends App {
     val dataLoadingTimer = new Timer
     val data = sc.textFile(params.input)
     val training = data.map(_.split("\\s+") match { case Array(user, item, rate)
-      => new Rating(user.toInt, item.toInt, rate.toFloat) }).cache()
+      => new R(user.toInt, item.toInt, rate.toFloat) }).cache()
 
     val numTraining = training.count()
     val numUsers = training.map(_.user).distinct().count()
@@ -107,25 +106,27 @@ object MatrixFactorization extends App {
       , params.lambda
       , false  // no implicit pref
       , 1.0)    // ignored when no implicit pref
-    //new MatrixFactorizationModel(params.rank, userFactors, prodFactors)
+    val uf = userFactors.map{
+      case (id, arr) => (id, arr.map(_.toDouble))}.cache()
+    val pf = prodFactors.map{
+      case (id, arr) => (id, arr.map(_.toDouble))}.cache()
+    val model = new MatrixFactorizationModel(params.rank, uf, pf)
     val trainingTime = trainingTimer.elapsed
     val numIterations = params.numIterations
     println(s"Training time: $trainingTime ($numIterations Iterations)")
 
-    /*
     val evalTimer = new Timer
-    val (sqError, rmse) = computeErrors(model, training)
-    val evalTime = trainingTimer.elapsed
+    val trainingRating = training.map(x => Rating(x.user, x.product, x.rating))
+    val (sqError, rmse) = computeErrors(model, trainingRating)
+    val evalTime = evalTimer.elapsed
     println(s"Eval time: $evalTime")
 
     println(s"Training SE = $sqError; RMSE = $rmse.")
-    */
 
     sc.stop()
   }
 
   /** Compute RMSE (Root Mean Squared Error). */
-  /*
   def computeErrors(model: MatrixFactorizationModel, data: RDD[Rating]) = {
     val predictions: RDD[Rating] = model.predict(data.map(x => (x.user, x.product)))
     val predictionsAndRatings = predictions.map{ x =>
@@ -135,5 +136,4 @@ object MatrixFactorization extends App {
     val numData = data.count
     (mse * numData, math.sqrt(mse))
   }
-  */
 }

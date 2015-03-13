@@ -25,6 +25,13 @@
       <version>1.2.1</version>
     </dependency>
     <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-mllib_${scala.binary.version}</artifactId>
+      <version>1.2.1</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/../../mllib/target/spark-mllib_2.10-1.2.1.jar</systemPath>
+    </dependency>
+    <dependency>
       <groupId>com.github.scopt</groupId>
       <artifactId>scopt_${scala.binary.version}</artifactId>
       <version>3.2.0</version>
