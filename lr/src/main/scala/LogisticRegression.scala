@@ -1,4 +1,14 @@
 
+import org.apache.log4j.{Level, Logger}
+import scopt.OptionParser
+import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.SparkContext._
+//import org.apache.spark.mllib.regression.LinearRegressionWithSGD
+import org.apache.spark.mllib.util.MLUtils
+import org.apache.spark.mllib.optimization.{SimpleUpdater, SquaredL2Updater, L1Updater}
+import org.apache.spark.mllib.linalg.Vectors
+import org.apache.spark.storage.StorageLevel
+import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.classification.LogisticRegressionWithSGD
 
 object LogisticRegression extends App {
@@ -9,7 +19,7 @@ object LogisticRegression extends App {
 
   object DataFormat extends Enumeration {
     type DataFormat = Value
-    val EntryList, LibSVM = Value
+    val LibSVM = Value
   }
 
   import RegType._
@@ -21,7 +31,8 @@ object LogisticRegression extends App {
       stepSize: Double = 1.0,
       regType: RegType = L2,
       regParam: Double = 0.01,
-      dataFormat: DataFormat = EntryList) extends AbstractParams[Params]
+      minibatchFraction: Double = 1,
+      dataFormat: DataFormat = LibSVM) extends AbstractParams[Params]
 
   val defaultParams = Params()
 
@@ -43,6 +54,8 @@ object LogisticRegression extends App {
       .action((x, c) => c.copy(dataFormat = DataFormat.withName(x)))
     opt[Double]("regParam")
       .text(s"regularization parameter, default: ${defaultParams.regParam}")
+    opt[Double]("minibatchFraction")
+      .text(s"fraction of points to use per epoch: ${defaultParams.minibatchFraction}")
     arg[String]("<input>")
       .required()
       .text("input paths to data in (i) EntryList format, without .X or .Y "
@@ -71,6 +84,62 @@ object LogisticRegression extends App {
     Logger.getRootLogger.setLevel(Level.WARN)
 
     val dataLoadingTimer = new Timer
+    val training = params.dataFormat match {
+      case LibSVM => MLUtils.loadLibSVMFile(sc, params.input).cache()
+    }
+    val numTrain = training.count()
+    val dataLoadingTime = dataLoadingTimer.elapsed
+    println(s"Data loading time: $dataLoadingTime")
+
+    println(s"numTrain: $numTrain")
+    val updater = params.regType match {
+      case NONE => new SimpleUpdater()
+      case L1 => new L1Updater()
+      case L2 => new SquaredL2Updater()
+    }
+
+    val trainingTimer = new Timer
+    val algorithm = new LogisticRegressionWithSGD()
+    algorithm.optimizer
+      .setNumIterations(params.numIterations)
+      .setStepSize(params.stepSize)
+      .setUpdater(updater)
+      .setRegParam(params.regParam)
+      .setMiniBatchFraction(params.minibatchFraction)
+    val model = algorithm.run(training)
+    val trainingTime = trainingTimer.elapsed
+    val numIterations = params.numIterations
+    println(s"Training time: $trainingTime ($numIterations Iterations)")
+
+    val prediction = model.predict(training.map(_.features))
+    val predictionAndLabel = prediction.zip(training.map(_.label))
+    val w_array = model.weights.toArray
+    var regObj = params.regType match {
+      case NONE => 0
+      case L1 =>
+        var l1 = 0.0
+        for (i <- 0 to (w_array.length - 1)) {
+          l1 += math.abs(w_array(i))
+        }
+        params.regParam * l1
+      case L2 =>
+        var l2 = 0.0
+        for (i <- 0 to (w_array.length - 1)) {
+          l2 += w_array(i) * w_array(i)
+        }
+        params.regParam * l2
+    }
+
+    val logisticLoss = model.logisticLoss(training)
+     .reduce(_+_) / numTrain.toDouble
+    val objValue = logisticLoss + params.regParam * regObj
+
+    val trainError = predictionAndLabel.map { case (p, l) =>
+      math.abs(p - l)
+    }.reduce(_ + _) / numTrain.toDouble
+
+    println(s"Objective value = $objValue; Train Error: $trainError")
+
     sc.stop()
   }
 

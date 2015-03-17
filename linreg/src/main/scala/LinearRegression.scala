@@ -141,12 +141,6 @@ object LinearRegression extends App {
     val dataLoadingTime = dataLoadingTimer.elapsed
     println(s"Data loading time: $dataLoadingTime")
 
-    //val splits = examples.randomSplit(Array(0.8, 0.2))
-    //val training = splits(0).cache()
-    //val test = splits(1).cache()
-
-    //val numTrain = training.count()
-    //val numTest = test.count()
     println(s"Training: $numTrain")
 
     //examples.unpersist(blocking = false)
