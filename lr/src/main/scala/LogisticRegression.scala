@@ -10,6 +10,8 @@ import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.classification.LogisticRegressionWithSGD
+import breeze.linalg.{DenseVector => BDV, SparseVector => BSV, Vector => BV}
+import org.apache.spark.mllib.linalg.SparseVector
 
 object LogisticRegression extends App {
   object RegType extends Enumeration {
@@ -111,10 +113,20 @@ object LogisticRegression extends App {
     val numIterations = params.numIterations
     println(s"Training time: $trainingTime ($numIterations Iterations)")
 
+    val trainErrorTimer = new Timer
     val prediction = model.predict(training.map(_.features))
     val predictionAndLabel = prediction.zip(training.map(_.label))
+    val trainError = predictionAndLabel.map { case (p, l) =>
+      math.abs(p - l)
+    }.reduce(_ + _) / numTrain.toDouble
+    val trainErrorTime = trainErrorTimer.elapsed
+    println(s"Train error: $trainError (eval time: $trainErrorTime)")
+
+    val trainObjTimer = new Timer
     val w_array = model.weights.toArray
-    var regObj = params.regType match {
+    val w_brz = new BDV[Double](model.weights.toArray)
+    val bias = model.intercept
+    val regObj = params.regType match {
       case NONE => 0
       case L1 =>
         var l1 = 0.0
@@ -130,15 +142,27 @@ object LogisticRegression extends App {
         params.regParam * l2
     }
 
-    val logisticLoss = model.logisticLoss(training)
-     .reduce(_+_) / numTrain.toDouble
+    val localWeights = w_brz
+    val bcWeights = training.context.broadcast(localWeights)
+    val logisticLoss = training.mapPartitions { iter => 
+      val bias_local = bias
+      val w_brz_local = bcWeights.value
+      iter.map { labeledPoint =>
+        val feature = labeledPoint.features.asInstanceOf[SparseVector]
+        val feature_brz = new BSV[Double](feature.indices, feature.values,
+          feature.size)
+        val dotProd = w_brz_local.dot(feature_brz) + bias_local
+        math.log(1 + math.exp(-labeledPoint.label * dotProd))
+      }
+    }.reduce(_+_)
+    val normalizedLogisticLoss = logisticLoss / numTrain.toDouble
+
     val objValue = logisticLoss + params.regParam * regObj
+    val normalizedObjValue = normalizedLogisticLoss + params.regParam * regObj
 
-    val trainError = predictionAndLabel.map { case (p, l) =>
-      math.abs(p - l)
-    }.reduce(_ + _) / numTrain.toDouble
-
-    println(s"Objective value = $objValue; Train Error: $trainError")
+    val trainObjTime = trainObjTimer.elapsed
+    println(s"Train obj (unnormalized) = $objValue; Train obj (normalized): "
+      + s"$normalizedObjValue; Eval time: $trainObjTime")
 
     sc.stop()
   }
