@@ -3,11 +3,11 @@ script_path=`readlink -f $0`
 script_dir=`dirname $script_path`
 spark_dir=`dirname $script_dir`
 
-numIterations=10
-rank=100
+numIterations=5
+rank=10
 lambda=0.05
 
-master_ip=10.53.1.5
+master_ip=10.53.1.11
 data_path=data/mllib/sample_binary_classification_data.txt
 #data_path=/tank/projects/biglearning/wdai/datasets/mlr_datasets/synth_bin/lr2sp_dim100000_s10000000_nnz1000
 #data_path=/l0/synth_bin/lr2sp_dim100000_s10000000_nnz1000
@@ -16,10 +16,10 @@ data_path=data/mllib/sample_binary_classification_data.txt
 #data_path=/tank/projects/biglearning/wdai/datasets/lasso/synth_small/sparse500
 #data_path=/tank/projects/biglearning/wdai/datasets/lasso/ad/ad
 #data_path=/l0/ad/ad
-#data_path=/tank/projects/biglearning/wdai/datasets/mf/netflix/netflix.entrylist
+data_path=/tank/projects/biglearning/wdai/datasets/mf/netflix/netflix.entrylist
 #data_path=/tank/projects/biglearning/wdai/datasets/mf/netflix_small/netflix_small.entrylist
 #data_path=/l0/netflix_small/netflix_small.entrylist
-data_path=/l0/netflix/netflix.entrylist
+#data_path=/l0/netflix/netflix.entrylist
 #data_path=/l0/subset20/url.20.train
 #data_path=/l0/url_reputation/url.test
 #data_path=/tank/projects/biglearning/wdai/datasets/mlr_datasets/url_reputation/url.train

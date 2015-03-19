@@ -56,6 +56,7 @@ object LogisticRegression extends App {
       .action((x, c) => c.copy(dataFormat = DataFormat.withName(x)))
     opt[Double]("regParam")
       .text(s"regularization parameter, default: ${defaultParams.regParam}")
+      .action((x, c) => c.copy(regParam = x))
     opt[Double]("minibatchFraction")
       .text(s"fraction of points to use per epoch: ${defaultParams.minibatchFraction}")
     arg[String]("<input>")
@@ -94,6 +95,7 @@ object LogisticRegression extends App {
     println(s"Data loading time: $dataLoadingTime")
 
     println(s"numTrain: $numTrain")
+    println(s"Experiment params: $params")
     val updater = params.regType match {
       case NONE => new SimpleUpdater()
       case L1 => new L1Updater()
@@ -117,7 +119,9 @@ object LogisticRegression extends App {
     val prediction = model.predict(training.map(_.features))
     val predictionAndLabel = prediction.zip(training.map(_.label))
     val trainError = predictionAndLabel.map { case (p, l) =>
-      math.abs(p - l)
+      if (p == l) 0
+      else 1
+      //math.abs(p - l)
     }.reduce(_ + _) / numTrain.toDouble
     val trainErrorTime = trainErrorTimer.elapsed
     println(s"Train error: $trainError (eval time: $trainErrorTime)")
@@ -139,12 +143,12 @@ object LogisticRegression extends App {
         for (i <- 0 to (w_array.length - 1)) {
           l2 += w_array(i) * w_array(i)
         }
-        params.regParam * l2
+        0.5 * params.regParam * l2  // 1/2 * lambda * ||w||^2
     }
 
     val localWeights = w_brz
     val bcWeights = training.context.broadcast(localWeights)
-    val logisticLoss = training.mapPartitions { iter => 
+    val logisticLoss = training.mapPartitions { iter =>
       val bias_local = bias
       val w_brz_local = bcWeights.value
       iter.map { labeledPoint =>
@@ -152,17 +156,20 @@ object LogisticRegression extends App {
         val feature_brz = new BSV[Double](feature.indices, feature.values,
           feature.size)
         val dotProd = w_brz_local.dot(feature_brz) + bias_local
-        math.log(1 + math.exp(-labeledPoint.label * dotProd))
+        labeledPoint.label match {
+          case 0 => math.log(1 + math.exp(dotProd))
+          case 1 => math.log(1 + math.exp(-dotProd))
+        }
       }
-    }.reduce(_+_)
-    val normalizedLogisticLoss = logisticLoss / numTrain.toDouble
+    }.reduce(_+_) / numTrain.toDouble
+    val objValue = logisticLoss + regObj
 
-    val objValue = logisticLoss + params.regParam * regObj
-    val normalizedObjValue = normalizedLogisticLoss + params.regParam * regObj
+    //val normalizedLogisticLoss = logisticLoss / numTrain.toDouble
+    //val normalizedObjValue = normalizedLogisticLoss + regObj
 
     val trainObjTime = trainObjTimer.elapsed
-    println(s"Train obj (unnormalized) = $objValue; Train obj (normalized): "
-      + s"$normalizedObjValue; Eval time: $trainObjTime")
+    println(s"Logistic Loss: $logisticLoss; Train obj: "
+      + s"$objValue; Eval time: $trainObjTime")
 
     sc.stop()
   }

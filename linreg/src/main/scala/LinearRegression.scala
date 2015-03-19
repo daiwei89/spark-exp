@@ -76,6 +76,7 @@ object LinearRegression extends App {
       .action((x, c) => c.copy(dataFormat = DataFormat.withName(x)))
     opt[Double]("regParam")
       .text(s"regularization parameter, default: ${defaultParams.regParam}")
+      .action((x, c) => c.copy(regParam = x))
     arg[String]("<input>")
       .required()
       .text("input paths to data in (i) EntryList format, without .X or .Y "
@@ -141,7 +142,8 @@ object LinearRegression extends App {
     val dataLoadingTime = dataLoadingTimer.elapsed
     println(s"Data loading time: $dataLoadingTime")
 
-    println(s"Training: $numTrain")
+    println(s"numTrain: $numTrain")
+    println(s"trainParams: $params")
 
     //examples.unpersist(blocking = false)
 
@@ -161,25 +163,34 @@ object LinearRegression extends App {
 
     val model = algorithm.run(training)
     val trainingTime = trainingTimer.elapsed
-    println(s"Training time: $trainingTime ($params.numIterations Iterations)")
+    val numIterations = params.numIterations
+    println(s"Training time: $trainingTime ($numIterations Iterations)")
 
+    val evalTimer = new Timer
     val prediction = model.predict(training.map(_.features))
     val predictionAndLabel = prediction.zip(training.map(_.label))
     val w = model.weights.toArray
+    var nnz = 0.0
+    for (i <- 0 to (w.length - 1)) {
+      if (w(i) != 0) nnz += 1
+    }
+    println(s"nnz in w: $nnz")
+    //println("learned w: " + w.slice(0,1000).mkString(" "))
     var l1 = 0.0;
     for (i <- 0 to (w.length - 1)) {
       l1 += math.abs(w(i))
     }
 
-    val trainSqError = 0.5 * predictionAndLabel.map { case (p, l) =>
+    val trainSqError = predictionAndLabel.map { case (p, l) =>
       val err = p - l
       err * err
     }.reduce(_ + _)
-    val mse = trainSqError / numTrain
-    val obj = trainSqError + params.regParam * l1
+    val mse = trainSqError / numTrain.toDouble
+    val obj = 0.5 * trainSqError + params.regParam * l1
 
-    println(s"0.5 * Train SE = $trainSqError; Train MSE = $mse; " +
-      s"Train objective: $obj")
+    val evalTime = evalTimer.elapsed
+    println(s"Train SE = $trainSqError; Train MSE = $mse; " +
+      s"Train objective: $obj; eval time: $evalTime")
 
     sc.stop()
   }
