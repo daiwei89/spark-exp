@@ -103,6 +103,7 @@ object LinearRegression extends App {
     val sc = new SparkContext(conf)
 
     Logger.getRootLogger.setLevel(Level.WARN)
+    println(s"trainParams: $params")
 
     val dataLoadingTimer = new Timer
     val training = params.dataFormat match {
@@ -143,7 +144,6 @@ object LinearRegression extends App {
     println(s"Data loading time: $dataLoadingTime")
 
     println(s"numTrain: $numTrain")
-    println(s"trainParams: $params")
 
     //examples.unpersist(blocking = false)
 
